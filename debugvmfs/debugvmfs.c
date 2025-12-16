@@ -69,7 +69,7 @@ static int cmd_getVmfsVersion(vmfs_dir_t *base_dir,int argc,char *argv[])
 		fprintf(stderr,"Fail to get VMFS version!");
 			return(-1);
 	};
-	printf("VMFS version: %d\n", vol->vol_info.version);
+	printf("VMFS version: %s\n", vol->vol_info.version);
 	return(0);
 }
 

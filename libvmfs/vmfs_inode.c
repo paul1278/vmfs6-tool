@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-/* 
+/*
  * VMFS inodes.
  */
 
@@ -27,163 +27,172 @@
 #include <assert.h>
 #include "vmfs.h"
 
-static inline uint64_t vmfs_inode_read_blk_id(const u_char *buf,u_int index)
+static inline uint64_t vmfs_inode_read_blk_id(const u_char *buf, u_int index)
 {
-   return(read_le64(buf,VMFS_INODE_OFS_BLK_ARRAY+(index*sizeof(uint64_t))));
+   printf("Reading block id at index %u and offset %lu\n", index, VMFS_INODE_OFS_BLK_ARRAY + (index * sizeof(uint64_t)));
+   return (read_le64(buf, VMFS_INODE_OFS_BLK_ARRAY + (index * sizeof(uint64_t))));
 }
 
-static inline void vmfs_inode_write_blk_id(u_char *buf,u_int index,
+static inline void vmfs_inode_write_blk_id(u_char *buf, u_int index,
                                            uint64_t blk_id)
 {
-   write_le64(buf,VMFS_INODE_OFS_BLK_ARRAY+(index*sizeof(uint64_t)),blk_id);
+   write_le64(buf, VMFS_INODE_OFS_BLK_ARRAY + (index * sizeof(uint64_t)), blk_id);
 }
 
 /* Read an inode */
-static int vmfs_inode_read(vmfs_inode_t *inode,const u_char *buf)
+static int vmfs_inode_read(vmfs_inode_t *inode, const u_char *buf)
 {
    int i;
    int res;
-   vmfs_metadata_hdr_read(&inode->mdh,buf);
-   dprintf("called buf %p magic %x\n", buf, inode->mdh.magic);      
-
+   vmfs_metadata_hdr_read(&inode->mdh, buf);
+   dprintf("called buf %p magic %x\n", buf, inode->mdh.magic);
 
    if (inode->mdh.magic != VMFS_INODE_MAGIC)
-      return(-1);
+      return (-1);
 
-   inode->id        = read_le32(buf,VMFS_INODE_OFS_ID);
-   inode->id2       = read_le32(buf,VMFS_INODE_OFS_ID2);
-   inode->nlink     = read_le32(buf,VMFS_INODE_OFS_NLINK);
-   inode->type      = read_le32(buf,VMFS_INODE_OFS_TYPE);
-   inode->flags     = read_le32(buf,VMFS_INODE_OFS_FLAGS);
-   inode->size      = read_le64(buf,VMFS_INODE_OFS_SIZE);
-   inode->blk_size  = read_le64(buf,VMFS_INODE_OFS_BLK_SIZE);
-   inode->blk_count = read_le64(buf,VMFS_INODE_OFS_BLK_COUNT);
-   inode->mtime     = read_le32(buf,VMFS_INODE_OFS_MTIME);
-   inode->ctime     = read_le32(buf,VMFS_INODE_OFS_CTIME);
-   inode->atime     = read_le32(buf,VMFS_INODE_OFS_ATIME);
-   inode->uid       = read_le32(buf,VMFS_INODE_OFS_UID);
-   inode->gid       = read_le32(buf,VMFS_INODE_OFS_GID);
-   inode->mode      = read_le32(buf,VMFS_INODE_OFS_MODE);
-   inode->zla       = read_le32(buf,VMFS_INODE_OFS_ZLA);
-   inode->tbz       = read_le32(buf,VMFS_INODE_OFS_TBZ);
-   inode->cow       = read_le32(buf,VMFS_INODE_OFS_COW);
+   inode->id = read_le32(buf, VMFS_INODE_OFS_ID);
+   inode->id2 = read_le32(buf, VMFS_INODE_OFS_ID2);
+   inode->nlink = read_le32(buf, VMFS_INODE_OFS_NLINK);
+   inode->type = read_le32(buf, VMFS_INODE_OFS_TYPE);
+   inode->flags = read_le32(buf, VMFS_INODE_OFS_FLAGS);
+   inode->size = read_le64(buf, VMFS_INODE_OFS_SIZE);
+   inode->blk_size = read_le64(buf, VMFS_INODE_OFS_BLK_SIZE);
+   inode->blk_count = read_le64(buf, VMFS_INODE_OFS_BLK_COUNT);
+   printf("READ INODE BLOCK COUNT: %lu\n", inode->blk_count);
+   printf("INODE ID: %u\n", inode->id);
+   inode->mtime = read_le32(buf, VMFS_INODE_OFS_MTIME);
+   inode->ctime = read_le32(buf, VMFS_INODE_OFS_CTIME);
+   inode->atime = read_le32(buf, VMFS_INODE_OFS_ATIME);
+   inode->uid = read_le32(buf, VMFS_INODE_OFS_UID);
+   inode->gid = read_le32(buf, VMFS_INODE_OFS_GID);
+   inode->mode = read_le32(buf, VMFS_INODE_OFS_MODE);
+   inode->zla = read_le32(buf, VMFS_INODE_OFS_ZLA);
+   inode->tbz = read_le32(buf, VMFS_INODE_OFS_TBZ);
+   inode->cow = read_le32(buf, VMFS_INODE_OFS_COW);
 
    /* "corrected" mode */
 
    res = (inode->mode) & S_IFMT;
-   if (res==S_IFDIR)
-       inode->cmode = inode->mode;
+   if (res == S_IFDIR)
+      inode->cmode = inode->mode;
    else
-       inode->cmode = inode->mode | vmfs_file_type2mode(inode->type);
-   dprintf("metadata done for inode type %d zla 0x%x\n", inode->type, inode->zla);   
+      inode->cmode = inode->mode | vmfs_file_type2mode(inode->type);
+   dprintf("metadata done for inode type %d zla 0x%x\n", inode->type, inode->zla);
 
-   if (inode->type == VMFS_FILE_TYPE_RDM) {
-      inode->rdm_id = read_le32(buf,VMFS_INODE_OFS_RDM_ID);
-   } else if (inode->zla == VMFS5_ZLA_BASE + VMFS_BLK_TYPE_FD) {
+   if (inode->type == VMFS_FILE_TYPE_RDM)
+   {
+      inode->rdm_id = read_le32(buf, VMFS_INODE_OFS_RDM_ID);
+   }
+   else if (inode->zla == VMFS5_ZLA_BASE + VMFS_BLK_TYPE_FD)
+   {
       memcpy(inode->content, buf + VMFS_INODE_OFS_CONTENT, inode->size);
-   } else {
+   }
+   else
+   {
       dprintf("file id %d off %ld blk:\n", inode->id, VMFS_INODE_OFS_BLK_ARRAY);
-      //hexdump(buf+VMFS_INODE_OFS_BLK_ARRAY,256);
-      for(i=0;i<VMFS_INODE_BLK_COUNT;i++)
+      hexdump(buf + VMFS_INODE_OFS_BLK_ARRAY, 256);
+      for (i = 0; i < VMFS_INODE_BLK_COUNT; i++)
       {
-         inode->blocks[i] = vmfs_inode_read_blk_id(buf,i);
-         if (inode->blocks[i] == 0)	      
-         	break;
-		 dprintf("%d:%016lx\n", i, inode->blocks[i]);				
-         	
-       }
-       dprintf("-------\n");
+         inode->blocks[i] = vmfs_inode_read_blk_id(buf, i);
+         if (inode->blocks[i] == 0)
+            break;
+         dprintf("%d:%016lx\n", i, inode->blocks[i]);
+      }
+      dprintf("-------\n");
    }
 
-   return(0);
+   return (0);
 }
 
 /* Write an inode */
-static int vmfs_inode_write(const vmfs_inode_t *inode,u_char *buf)
+static int vmfs_inode_write(const vmfs_inode_t *inode, u_char *buf)
 {
-   vmfs_metadata_hdr_write(&inode->mdh,buf);
-   write_le32(buf,VMFS_INODE_OFS_ID,inode->id);
-   write_le32(buf,VMFS_INODE_OFS_ID2,inode->id2);
-   write_le32(buf,VMFS_INODE_OFS_NLINK,inode->nlink);
-   write_le32(buf,VMFS_INODE_OFS_TYPE,inode->type);
-   write_le32(buf,VMFS_INODE_OFS_FLAGS,inode->flags);
-   write_le64(buf,VMFS_INODE_OFS_SIZE,inode->size);
-   write_le64(buf,VMFS_INODE_OFS_BLK_SIZE,inode->blk_size);
-   write_le64(buf,VMFS_INODE_OFS_BLK_COUNT,inode->blk_count);
-   write_le32(buf,VMFS_INODE_OFS_MTIME,inode->mtime);
-   write_le32(buf,VMFS_INODE_OFS_CTIME,inode->ctime);
-   write_le32(buf,VMFS_INODE_OFS_ATIME,inode->atime);
-   write_le32(buf,VMFS_INODE_OFS_UID,inode->uid);
-   write_le32(buf,VMFS_INODE_OFS_GID,inode->gid);
-   write_le32(buf,VMFS_INODE_OFS_MODE,inode->mode);
-   write_le32(buf,VMFS_INODE_OFS_ZLA,inode->zla);
-   write_le32(buf,VMFS_INODE_OFS_TBZ,inode->tbz);
-   write_le32(buf,VMFS_INODE_OFS_COW,inode->cow);
-   return(0);
+   vmfs_metadata_hdr_write(&inode->mdh, buf);
+   write_le32(buf, VMFS_INODE_OFS_ID, inode->id);
+   write_le32(buf, VMFS_INODE_OFS_ID2, inode->id2);
+   write_le32(buf, VMFS_INODE_OFS_NLINK, inode->nlink);
+   write_le32(buf, VMFS_INODE_OFS_TYPE, inode->type);
+   write_le32(buf, VMFS_INODE_OFS_FLAGS, inode->flags);
+   write_le64(buf, VMFS_INODE_OFS_SIZE, inode->size);
+   write_le64(buf, VMFS_INODE_OFS_BLK_SIZE, inode->blk_size);
+   write_le64(buf, VMFS_INODE_OFS_BLK_COUNT, inode->blk_count);
+   write_le32(buf, VMFS_INODE_OFS_MTIME, inode->mtime);
+   write_le32(buf, VMFS_INODE_OFS_CTIME, inode->ctime);
+   write_le32(buf, VMFS_INODE_OFS_ATIME, inode->atime);
+   write_le32(buf, VMFS_INODE_OFS_UID, inode->uid);
+   write_le32(buf, VMFS_INODE_OFS_GID, inode->gid);
+   write_le32(buf, VMFS_INODE_OFS_MODE, inode->mode);
+   write_le32(buf, VMFS_INODE_OFS_ZLA, inode->zla);
+   write_le32(buf, VMFS_INODE_OFS_TBZ, inode->tbz);
+   write_le32(buf, VMFS_INODE_OFS_COW, inode->cow);
+   return (0);
 }
 
 /* Update block list */
-static void vmfs_inode_write_blk_list(const vmfs_inode_t *inode,u_char *buf)
+static void vmfs_inode_write_blk_list(const vmfs_inode_t *inode, u_char *buf)
 {
    int i;
 
-   for(i=0;i<VMFS_INODE_BLK_COUNT;i++)
-      vmfs_inode_write_blk_id(buf,i,inode->blocks[i]);
+   for (i = 0; i < VMFS_INODE_BLK_COUNT; i++)
+      vmfs_inode_write_blk_id(buf, i, inode->blocks[i]);
 }
 
 /* Update an inode on disk */
-int vmfs_inode_update(const vmfs_inode_t *inode,int update_blk_list)
+int vmfs_inode_update(const vmfs_inode_t *inode, int update_blk_list)
 {
-   DECL_ALIGNED_BUFFER(buf,VMFS_INODE_SIZE);
+   DECL_ALIGNED_BUFFER(buf, VMFS_INODE_SIZE);
 
-   memset(buf,0,VMFS_INODE_SIZE);
-   vmfs_inode_write(inode,buf);
+   memset(buf, 0, VMFS_INODE_SIZE);
+   vmfs_inode_write(inode, buf);
 
-   if (update_blk_list) {
-      vmfs_inode_write_blk_list(inode,buf);
-   } else {
+   if (update_blk_list)
+   {
+      vmfs_inode_write_blk_list(inode, buf);
+   }
+   else
+   {
       buf_len -= VMFS_INODE_BLK_COUNT * sizeof(uint32_t);
    }
 
-   if (vmfs_device_write(inode->fs->dev,inode->mdh.pos,buf,buf_len) != buf_len)
-      return(-1);
+   if (vmfs_device_write(inode->fs->dev, inode->mdh.pos, buf, buf_len) != buf_len)
+      return (-1);
 
-   return(0);
+   return (0);
 }
 
 /* Get inode corresponding to a block id */
-int vmfs_inode_get(const vmfs_fs_t *fs,uint64_t blk_id,vmfs_inode_t *inode)
+int vmfs_inode_get(const vmfs_fs_t *fs, uint64_t blk_id, vmfs_inode_t *inode)
 {
-   DECL_ALIGNED_BUFFER_WOL(buf,VMFS_INODE_SIZE);
+   DECL_ALIGNED_BUFFER_WOL(buf, VMFS_INODE_SIZE);
    dprintf("%s : called\n", __FUNCTION__);
    if (VMFS_BLK_TYPE(blk_id) != VMFS_BLK_TYPE_FD)
-      return(-1);
+      return (-1);
 
    if (!vmfs_bitmap_get_item(fs->fdc, VMFS_BLK_FD_ENTRY(blk_id),
                              VMFS_BLK_FD_ITEM(blk_id), buf))
-      return(-1);
+      return (-1);
 
-   return(vmfs_inode_read(inode,buf));
+   return (vmfs_inode_read(inode, buf));
 }
 
 /* Hash function to retrieve an in-core inode */
-static inline u_int vmfs_inode_hash(const vmfs_fs_t *fs,uint64_t blk_id)
+static inline u_int vmfs_inode_hash(const vmfs_fs_t *fs, uint64_t blk_id)
 {
-   return( (blk_id ^ (blk_id >> 9)) & (fs->inode_hash_buckets - 1) );
+   return ((blk_id ^ (blk_id >> 9)) & (fs->inode_hash_buckets - 1));
 }
 
 /* Register an inode in the in-core inode hash table */
-static void vmfs_inode_register(const vmfs_fs_t *fs,vmfs_inode_t *inode)
+static void vmfs_inode_register(const vmfs_fs_t *fs, vmfs_inode_t *inode)
 {
    u_int hb;
 
-   hb = vmfs_inode_hash(fs,inode->id);
+   hb = vmfs_inode_hash(fs, inode->id);
 
    inode->fs = fs;
    inode->ref_count = 1;
-   
+
    /* Insert into hash table */
-   inode->next  = fs->inodes[hb];
+   inode->next = fs->inodes[hb];
    inode->pprev = &fs->inodes[hb];
 
    if (inode->next != NULL)
@@ -193,28 +202,30 @@ static void vmfs_inode_register(const vmfs_fs_t *fs,vmfs_inode_t *inode)
 }
 
 /* Acquire an inode */
-vmfs_inode_t *vmfs_inode_acquire(const vmfs_fs_t *fs,uint64_t blk_id)
+vmfs_inode_t *vmfs_inode_acquire(const vmfs_fs_t *fs, uint64_t blk_id)
 {
    vmfs_inode_t *inode;
    u_int hb;
 
-   hb = vmfs_inode_hash(fs,blk_id);
-   for(inode=fs->inodes[hb];inode;inode=inode->next)
-      if (inode->id == blk_id) {
+   hb = vmfs_inode_hash(fs, blk_id);
+   for (inode = fs->inodes[hb]; inode; inode = inode->next)
+      if (inode->id == blk_id)
+      {
          inode->ref_count++;
          return inode;
       }
-   
+
    /* Inode not yet used, allocate room for it */
-   if (!(inode = calloc(1,sizeof(*inode))))
+   if (!(inode = calloc(1, sizeof(*inode))))
       return NULL;
 
-   if (vmfs_inode_get(fs,blk_id,inode) == -1) {
+   if (vmfs_inode_get(fs, blk_id, inode) == -1)
+   {
       free(inode);
       return NULL;
    }
 
-   vmfs_inode_register(fs,inode);
+   vmfs_inode_register(fs, inode);
    return inode;
 }
 
@@ -222,12 +233,14 @@ vmfs_inode_t *vmfs_inode_acquire(const vmfs_fs_t *fs,uint64_t blk_id)
 void vmfs_inode_release(vmfs_inode_t *inode)
 {
    assert(inode->ref_count > 0);
- 
-   if (--inode->ref_count == 0) {
-      if (inode->update_flags)
-         vmfs_inode_update(inode,inode->update_flags & VMFS_INODE_SYNC_BLK);
 
-      if (inode->pprev != NULL) {
+   if (--inode->ref_count == 0)
+   {
+      if (inode->update_flags)
+         vmfs_inode_update(inode, inode->update_flags & VMFS_INODE_SYNC_BLK);
+
+      if (inode->pprev != NULL)
+      {
          /* remove the inode from hash table */
          if (inode->next != NULL)
             inode->next->pprev = inode->pprev;
@@ -240,7 +253,7 @@ void vmfs_inode_release(vmfs_inode_t *inode)
 }
 
 /* Allocate a new inode */
-int vmfs_inode_alloc(vmfs_fs_t *fs,u_int type,mode_t mode,vmfs_inode_t **inode)
+int vmfs_inode_alloc(vmfs_fs_t *fs, u_int type, mode_t mode, vmfs_inode_t **inode)
 {
    vmfs_inode_t *fdc_inode;
    off_t fdc_offset;
@@ -250,24 +263,24 @@ int vmfs_inode_alloc(vmfs_fs_t *fs,u_int type,mode_t mode,vmfs_inode_t **inode)
 
    time(&ct);
 
-   if (!(*inode = calloc(1,sizeof(vmfs_inode_t))))
-      return(-ENOMEM);
+   if (!(*inode = calloc(1, sizeof(vmfs_inode_t))))
+      return (-ENOMEM);
 
    (*inode)->mdh.magic = VMFS_INODE_MAGIC;
-   (*inode)->type      = type;
-   (*inode)->blk_size  = fs->sbc->bmh.data_size;
-   (*inode)->zla       = VMFS_BLK_TYPE_SB;
-   (*inode)->mtime     = ct;
-   (*inode)->ctime     = ct;
-   (*inode)->atime     = ct;
-   (*inode)->id2       = ++fs->inode_gen;
-   (*inode)->mode      = mode;
-   (*inode)->cmode     = (*inode)->mode | vmfs_file_type2mode((*inode)->type);
+   (*inode)->type = type;
+   (*inode)->blk_size = fs->sbc->bmh.data_size;
+   (*inode)->zla = VMFS_BLK_TYPE_SB;
+   (*inode)->mtime = ct;
+   (*inode)->ctime = ct;
+   (*inode)->atime = ct;
+   (*inode)->id2 = ++fs->inode_gen;
+   (*inode)->mode = mode;
+   (*inode)->cmode = (*inode)->mode | vmfs_file_type2mode((*inode)->type);
 
-
-   if (vmfs_block_alloc(fs,VMFS_BLK_TYPE_FD,&blk_id) < 0) {
+   if (vmfs_block_alloc(fs, VMFS_BLK_TYPE_FD, &blk_id) < 0)
+   {
       free(*inode);
-      return(-ENOSPC);
+      return (-ENOSPC);
    }
    (*inode)->id = (uint32_t)blk_id;
 
@@ -278,29 +291,29 @@ int vmfs_inode_alloc(vmfs_fs_t *fs,u_int type,mode_t mode,vmfs_inode_t **inode)
                                          VMFS_BLK_FD_ENTRY((*inode)->id),
                                          VMFS_BLK_FD_ITEM((*inode)->id));
 
-   if ((vmfs_inode_get_block(fdc_inode,fdc_offset,&fdc_blk) == -1) ||
+   if ((vmfs_inode_get_block(fdc_inode, fdc_offset, &fdc_blk) == -1) ||
        (VMFS_BLK_TYPE(fdc_blk) != VMFS_BLK_TYPE_FB))
    {
-      vmfs_block_free(fs,(*inode)->id);
+      vmfs_block_free(fs, (*inode)->id);
       free(*inode);
-      return(-ENOSPC);
+      return (-ENOSPC);
    }
 
    (*inode)->mdh.pos = fdc_inode->blk_size * VMFS_BLK_FB_ITEM(fdc_blk);
    (*inode)->mdh.pos += fdc_offset % fdc_inode->blk_size;
 
    (*inode)->update_flags |= VMFS_INODE_SYNC_ALL;
-   vmfs_inode_register(fs,*inode);
-   return(0);
+   vmfs_inode_register(fs, *inode);
+   return (0);
 }
 
-/* 
+/*
  * Get block ID corresponding the specified position. Double Indirecting Addressing, Pointer block
  */
-int doubleIndirectAddressing(const vmfs_inode_t *inode,off_t pos,uint64_t *blk_id)
+int doubleIndirectAddressing(const vmfs_inode_t *inode, off_t pos, uint64_t *blk_id)
 {
    const vmfs_fs_t *fs = inode->fs;
-   DECL_ALIGNED_BUFFER_WOL(buf,fs->sbc->bmh.data_size);
+   DECL_ALIGNED_BUFFER_WOL(buf, fs->sbc->bmh.data_size);
 
    u_int blk_index;
    uint32_t blk_per_extendedPb;
@@ -316,12 +329,12 @@ int doubleIndirectAddressing(const vmfs_inode_t *inode,off_t pos,uint64_t *blk_i
    u_int secondary_sub_index;
 
    blk_index = pos / inode->blk_size;
-   dprintf("blk_index: %d = pos/inode->blk_size: (%ld/%ld)\n",blk_index, pos, inode->blk_size);
+   dprintf("blk_index: %d = pos/inode->blk_size: (%ld/%ld)\n", blk_index, pos, inode->blk_size);
 
-   blk_per_primary_pb = fs->sbc->bmh.data_size / sizeof(uint64_t); // 8192
+   blk_per_primary_pb = fs->sbc->bmh.data_size / sizeof(uint64_t);   // 8192
    blk_per_secondary_pb = fs->sbc->bmh.data_size / sizeof(uint64_t); // 8192
-   blk_per_extendedPb = blk_per_primary_pb * blk_per_secondary_pb;	// 64m
-   dprintf("blk_per_extendedPb: %d\n",blk_per_extendedPb);
+   blk_per_extendedPb = blk_per_primary_pb * blk_per_secondary_pb;   // 64m
+   dprintf("blk_per_extendedPb: %d\n", blk_per_extendedPb);
 
    primary_pb_index = blk_index / blk_per_extendedPb;
    primary_sub_index = blk_index % blk_per_extendedPb;
@@ -332,36 +345,35 @@ int doubleIndirectAddressing(const vmfs_inode_t *inode,off_t pos,uint64_t *blk_i
    dprintf("secondary_pb_index: %d, secondary_sub_index: %d\n", secondary_pb_index, secondary_sub_index);
 
    if (primary_pb_index >= VMFS_INODE_BLK_COUNT)
-	  return(-EINVAL);
+      return (-EINVAL);
 
    primary_pb_blk_id = inode->blocks[primary_pb_index];
    dprintf("primary_pb_blk_id: 0x%lx, \n", primary_pb_blk_id);
 
    if (!primary_pb_blk_id)
-	  return(-EINVAL);
+      return (-EINVAL);
 
    if (!vmfs_bitmap_get_item(fs->sbc, VMFS_BLK_SB_ENTRY(primary_pb_blk_id), VMFS_BLK_SB_ITEM(primary_pb_blk_id), buf))
-	  return(-EIO);
+      return (-EIO);
    dprintf("primary_pb_blk_id: 0x%lx, \n", primary_pb_blk_id);
 
-   secondary_pb_blk_id = read_le64(buf,secondary_pb_index*sizeof(uint64_t));
+   secondary_pb_blk_id = read_le64(buf, secondary_pb_index * sizeof(uint64_t));
    dprintf("secondary_pb_blk_id: 0x%lx, secondary_pb_index: %d\n", secondary_pb_blk_id, secondary_pb_index);
 
    if (!vmfs_bitmap_get_item(fs->sbc, VMFS_BLK_SB_ENTRY(secondary_pb_blk_id), VMFS_BLK_SB_ITEM(secondary_pb_blk_id), buf))
-	  return(-EIO);
+      return (-EIO);
 
-    *blk_id = read_le64(buf,secondary_sub_index*sizeof(uint64_t));
-    dprintf("blk_id: 0x%lx, secondary_sub_index: %d\n", *blk_id, secondary_sub_index);
+   *blk_id = read_le64(buf, secondary_sub_index * sizeof(uint64_t));
+   dprintf("blk_id: 0x%lx, secondary_sub_index: %d\n", *blk_id, secondary_sub_index);
 
-	return(0);
-
+   return (0);
 }
 
 /*
  * Get block ID corresponding the specified position. Pointer block
  * resolution is transparently done here.
  */
-int vmfs_inode_get_block(const vmfs_inode_t *inode,off_t pos,uint64_t *blk_id)
+int vmfs_inode_get_block(const vmfs_inode_t *inode, off_t pos, uint64_t *blk_id)
 {
    const vmfs_fs_t *fs = inode->fs;
    u_int blk_index;
@@ -371,168 +383,174 @@ int vmfs_inode_get_block(const vmfs_inode_t *inode,off_t pos,uint64_t *blk_id)
    *blk_id = 0;
 
    if (!inode->blk_size)
-      return(-EIO);
+      return (-EIO);
 
    /* This doesn't make much sense but looks like how it's being coded. At
     * least, the result has some sense. */
    zla = inode->zla;
-   if (zla >= VMFS5_ZLA_BASE) {
+   if (zla >= VMFS5_ZLA_BASE)
+   {
       vmfs5_extension = 1;
       zla -= VMFS5_ZLA_BASE;
-   } else
+   }
+   else
       vmfs5_extension = 0;
 
-	dprintf("%s : call for type-zla %d pos %016lx, vmfs5_extension: %d\n", __FUNCTION__, zla, pos, vmfs5_extension);
-   switch(zla) {
-      case VMFS_BLK_TYPE_FB:
-      case VMFS_BLK_TYPE_SB:
- 
-      
-         blk_index = pos / inode->blk_size;
-         
-         if (blk_index >= VMFS_INODE_BLK_COUNT)
-            return(-EINVAL);
+   dprintf("%s : call for type-zla %d pos %016lx, vmfs5_extension: %d\n", __FUNCTION__, zla, pos, vmfs5_extension);
+   switch (zla)
+   {
+   case VMFS_BLK_TYPE_FB:
+   case VMFS_BLK_TYPE_SB:
 
-         *blk_id = inode->blocks[blk_index];
+      blk_index = pos / inode->blk_size;
+
+      if (blk_index >= VMFS_INODE_BLK_COUNT)
+         return (-EINVAL);
+
+      *blk_id = inode->blocks[blk_index];
+      break;
+
+   case VMFS_BLK_TYPE_PB2:
+   {
+      DECL_ALIGNED_BUFFER_WOL(buf, fs->pb2->bmh.data_size);
+      uint64_t pb_blk_id;
+      uint32_t blk_per_pb;
+      u_int pb_index;
+      u_int sub_index;
+
+      blk_per_pb = fs->pb2->bmh.data_size / sizeof(uint64_t);
+      blk_index = pos / inode->blk_size;
+
+      pb_index = blk_index / blk_per_pb;
+      sub_index = blk_index % blk_per_pb;
+
+      if (pb_index >= VMFS_INODE_BLK_COUNT)
+         return (-EINVAL);
+
+      pb_blk_id = inode->blocks[pb_index];
+
+      if (!pb_blk_id)
          break;
-  
-	  case VMFS_BLK_TYPE_PB2:
-	  {
-		  DECL_ALIGNED_BUFFER_WOL(buf,fs->pb2->bmh.data_size);
-		  uint64_t pb_blk_id;
-		  uint32_t blk_per_pb;
-		  u_int pb_index;
-		  u_int sub_index;
-		  
-		  blk_per_pb = fs->pb2->bmh.data_size / sizeof(uint64_t);
-		  blk_index = pos / inode->blk_size;
-		  
-		  pb_index	= blk_index / blk_per_pb;
-		  sub_index = blk_index % blk_per_pb;
-		  
-		  if (pb_index >= VMFS_INODE_BLK_COUNT)
-			 return(-EINVAL);
-		  
-		  pb_blk_id = inode->blocks[pb_index];
-		  
-		  if (!pb_blk_id)
-			 break;
-			dprintf("get item for pb2 blk 0x%lx\n", pb_blk_id);
-		  if (!vmfs_bitmap_get_item(fs->pb2,
-									VMFS_BLK_PB2_ENTRY(pb_blk_id),
-									VMFS_BLK_PB2_ITEM(pb_blk_id),
-									buf))
-			 return(-EIO);
-	  
-		  *blk_id = read_le64(buf,sub_index*sizeof(uint64_t));
-		  break;
+      dprintf("get item for pb2 blk 0x%lx\n", pb_blk_id);
+      if (!vmfs_bitmap_get_item(fs->pb2,
+                                VMFS_BLK_PB2_ENTRY(pb_blk_id),
+                                VMFS_BLK_PB2_ITEM(pb_blk_id),
+                                buf))
+         return (-EIO);
 
-	  }
-
-
-      case VMFS_BLK_TYPE_PB:
-      {
-         if (vmfs5_extension) {
-			  int err;
-              uint64_t blk_id_tmp;
-
-              // Double Indirect Addressing
-	          if ((err = doubleIndirectAddressing(inode,pos,&blk_id_tmp)) < 0)
-		      {
-		         dprintf("fail to get block 0x%lx\n", blk_id_tmp);
-		         return(err);
-		      }
-		      *blk_id = blk_id_tmp;
-		      dprintf("PB blk_id 0x%lx\n", *blk_id);
-
-          } else {
-	         DECL_ALIGNED_BUFFER_WOL(buf,fs->pbc->bmh.data_size);
-	         uint64_t pb_blk_id;
-	         uint32_t blk_per_pb;
-	         u_int pb_index;
-	         u_int sub_index;
-
-	         blk_per_pb = fs->pbc->bmh.data_size / sizeof(uint64_t);
-	         blk_index = pos / inode->blk_size;
-
-	         pb_index  = blk_index / blk_per_pb;
-	         sub_index = blk_index % blk_per_pb;
-
-	         if (pb_index >= VMFS_INODE_BLK_COUNT)
-	            return(-EINVAL);
-
-	         pb_blk_id = inode->blocks[pb_index];
-
-	         if (!pb_blk_id)
-	            break;
-	// under vmfs6 authors seems use sbc to replace pbc file for the index of a pb file
-	         if (!vmfs_bitmap_get_item(fs->sbc,
-	                                   VMFS_BLK_SB_ENTRY(pb_blk_id),
-	                                   VMFS_BLK_SB_ITEM(pb_blk_id),
-	                                   buf))
-	            return(-EIO);
-	//		hexdump(buf, fs->pbc->bmh.data_size);
-	         *blk_id = read_le64(buf,sub_index*sizeof(uint64_t));
-			dprintf("PB pb idx %u sub idx %u get blk_id 0x%lx\n", pb_index, sub_index, *blk_id);
-         }
-	         break;
-      }
-
-      case VMFS_BLK_TYPE_FD:
-         if (vmfs5_extension) {
-            *blk_id = inode->id;
-            break;
-         }
-      default:
-         /* Unexpected ZLA type */
-         return(-EIO);
+      *blk_id = read_le64(buf, sub_index * sizeof(uint64_t));
+      break;
    }
 
-   return(0);
+   case VMFS_BLK_TYPE_PB:
+   {
+      if (vmfs5_extension)
+      {
+         int err;
+         uint64_t blk_id_tmp;
+
+         // Double Indirect Addressing
+         if ((err = doubleIndirectAddressing(inode, pos, &blk_id_tmp)) < 0)
+         {
+            dprintf("fail to get block 0x%lx\n", blk_id_tmp);
+            return (err);
+         }
+         *blk_id = blk_id_tmp;
+         dprintf("PB blk_id 0x%lx\n", *blk_id);
+      }
+      else
+      {
+         DECL_ALIGNED_BUFFER_WOL(buf, fs->pbc->bmh.data_size);
+         uint64_t pb_blk_id;
+         uint32_t blk_per_pb;
+         u_int pb_index;
+         u_int sub_index;
+
+         blk_per_pb = fs->pbc->bmh.data_size / sizeof(uint64_t);
+         blk_index = pos / inode->blk_size;
+
+         pb_index = blk_index / blk_per_pb;
+         sub_index = blk_index % blk_per_pb;
+
+         if (pb_index >= VMFS_INODE_BLK_COUNT)
+            return (-EINVAL);
+
+         pb_blk_id = inode->blocks[pb_index];
+
+         if (!pb_blk_id)
+            break;
+         // under vmfs6 authors seems use sbc to replace pbc file for the index of a pb file
+         if (!vmfs_bitmap_get_item(fs->sbc,
+                                   VMFS_BLK_SB_ENTRY(pb_blk_id),
+                                   VMFS_BLK_SB_ITEM(pb_blk_id),
+                                   buf))
+            return (-EIO);
+         //		hexdump(buf, fs->pbc->bmh.data_size);
+         *blk_id = read_le64(buf, sub_index * sizeof(uint64_t));
+         dprintf("PB pb idx %u sub idx %u get blk_id 0x%lx\n", pb_index, sub_index, *blk_id);
+      }
+      break;
+   }
+
+   case VMFS_BLK_TYPE_FD:
+      if (vmfs5_extension)
+      {
+         *blk_id = inode->id;
+         break;
+      }
+   default:
+      /* Unexpected ZLA type */
+      return (-EIO);
+   }
+
+   return (0);
 }
 
 /* Aggregate a sub-block to a file block */
 static int vmfs_inode_aggregate_fb(vmfs_inode_t *inode)
 {
    const vmfs_fs_t *fs = inode->fs;
-   DECL_ALIGNED_BUFFER(buf,fs->sbc->bmh.data_size);
-   uint64_t fb_blk,sb_blk;
+   DECL_ALIGNED_BUFFER(buf, fs->sbc->bmh.data_size);
+   uint64_t fb_blk, sb_blk;
    uint32_t fb_item;
    uint32_t sb_count;
    off_t pos;
-   int i,res;
+   int i, res;
 
    sb_count = vmfs_fs_get_blocksize(fs) / buf_len;
 
    if (!(buf = iobuffer_alloc(buf_len)))
-      return(-ENOMEM);
+      return (-ENOMEM);
 
    sb_blk = inode->blocks[0];
 
    if (!vmfs_bitmap_get_item(fs->sbc,
                              VMFS_BLK_SB_ENTRY(sb_blk),
                              VMFS_BLK_SB_ITEM(sb_blk),
-                             buf)) 
+                             buf))
    {
       res = -EIO;
       goto err_sb_blk_read;
    }
 
-   if ((res = vmfs_block_alloc(fs,VMFS_BLK_TYPE_FB,&fb_blk)) < 0)
+   if ((res = vmfs_block_alloc(fs, VMFS_BLK_TYPE_FB, &fb_blk)) < 0)
       goto err_blk_alloc;
 
    fb_item = VMFS_BLK_FB_ITEM(fb_blk);
 
-   if (vmfs_fs_write(fs,fb_item,0,buf,buf_len) != buf_len) {
+   if (vmfs_fs_write(fs, fb_item, 0, buf, buf_len) != buf_len)
+   {
       res = -EIO;
       goto err_fs_write;
    }
 
-   memset(buf,0,buf_len);
+   memset(buf, 0, buf_len);
    pos = buf_len;
 
-   for(i=1;i<sb_count;i++) {
-      if (vmfs_fs_write(fs,fb_item,pos,buf,buf_len) != buf_len) {
+   for (i = 1; i < sb_count; i++)
+   {
+      if (vmfs_fs_write(fs, fb_item, pos, buf, buf_len) != buf_len)
+      {
          res = -EIO;
          goto err_fs_write;
       }
@@ -546,14 +564,14 @@ static int vmfs_inode_aggregate_fb(vmfs_inode_t *inode)
    inode->update_flags |= VMFS_INODE_SYNC_BLK;
 
    iobuffer_free(buf);
-   return(0);
+   return (0);
 
- err_fs_write:
-   vmfs_block_free(fs,fb_blk);
- err_sb_blk_read:
- err_blk_alloc:
+err_fs_write:
+   vmfs_block_free(fs, fb_blk);
+err_sb_blk_read:
+err_blk_alloc:
    iobuffer_free(buf);
-   return(res);
+   return (res);
 }
 
 /* Aggregate block list of an inode to a pointer block */
@@ -562,53 +580,55 @@ static int vmfs_inode_aggregate_pb(vmfs_inode_t *inode)
    const vmfs_fs_t *fs = inode->fs;
    uint32_t pb_len;
    uint64_t pb_blk;
-   uint32_t item,entry;
+   uint32_t item, entry;
    u_char *buf;
-   int i,res;
+   int i, res;
 
    pb_len = fs->pbc->bmh.data_size;
 
-   if (pb_len < (VMFS_INODE_BLK_COUNT * sizeof(uint32_t))) {
-      fprintf(stderr,"vmfs_inode_aggregate_pb: pb_len=0x%8.8x\n",pb_len);
-      return(-EIO);
+   if (pb_len < (VMFS_INODE_BLK_COUNT * sizeof(uint32_t)))
+   {
+      fprintf(stderr, "vmfs_inode_aggregate_pb: pb_len=0x%8.8x\n", pb_len);
+      return (-EIO);
    }
 
    if (!(buf = iobuffer_alloc(pb_len)))
-      return(-ENOMEM);
+      return (-ENOMEM);
 
-   memset(buf,0,pb_len);
+   memset(buf, 0, pb_len);
 
-   if ((res = vmfs_block_alloc(fs,VMFS_BLK_TYPE_PB,&pb_blk)) < 0)
+   if ((res = vmfs_block_alloc(fs, VMFS_BLK_TYPE_PB, &pb_blk)) < 0)
       goto err_blk_alloc;
 
-   for(i=0;i<VMFS_INODE_BLK_COUNT;i++)
-      write_le32(buf,i*sizeof(uint32_t),inode->blocks[i]);
+   for (i = 0; i < VMFS_INODE_BLK_COUNT; i++)
+      write_le32(buf, i * sizeof(uint32_t), inode->blocks[i]);
 
    entry = VMFS_BLK_PB_ENTRY(pb_blk);
-   item  = VMFS_BLK_PB_ITEM(pb_blk);
+   item = VMFS_BLK_PB_ITEM(pb_blk);
 
-   if (vmfs_bitmap_set_item(fs->pbc,entry,item,buf) == -1) {
+   if (vmfs_bitmap_set_item(fs->pbc, entry, item, buf) == -1)
+   {
       res = -EIO;
       goto err_set_item;
    }
 
-   memset(inode->blocks,0,sizeof(inode->blocks));
+   memset(inode->blocks, 0, sizeof(inode->blocks));
    inode->blocks[0] = pb_blk;
    inode->zla = VMFS_BLK_TYPE_PB;
    inode->update_flags |= VMFS_INODE_SYNC_BLK;
 
    iobuffer_free(buf);
-   return(0);
+   return (0);
 
- err_set_item:
-   vmfs_block_free(fs,pb_blk);
- err_blk_alloc:
+err_set_item:
+   vmfs_block_free(fs, pb_blk);
+err_blk_alloc:
    iobuffer_free(buf);
-   return(res);
+   return (res);
 }
 
 /* Proceed to block aggregation if the specified offset */
-static int vmfs_inode_aggregate(vmfs_inode_t *inode,off_t pos)
+static int vmfs_inode_aggregate(vmfs_inode_t *inode, off_t pos)
 {
    int res;
 
@@ -616,89 +636,97 @@ static int vmfs_inode_aggregate(vmfs_inode_t *inode,off_t pos)
    {
       /* A directory consists only of sub-blocks (except the root dir) */
       if (inode->type == VMFS_FILE_TYPE_DIR)
-         return(-EFBIG);
+         return (-EFBIG);
 
       if ((res = vmfs_inode_aggregate_fb(inode)) < 0)
-         return(res);
+         return (res);
    }
 
    if ((inode->zla == VMFS_BLK_TYPE_FB) &&
        (pos >= (inode->blk_size * VMFS_INODE_BLK_COUNT)))
-      return(vmfs_inode_aggregate_pb(inode));
+      return (vmfs_inode_aggregate_pb(inode));
 
-   return(0);
+   return (0);
 }
 
 /* Get a block for writing corresponding to the specified position */
-int vmfs_inode_get_wrblock(vmfs_inode_t *inode,off_t pos,uint64_t *blk_id)
+int vmfs_inode_get_wrblock(vmfs_inode_t *inode, off_t pos, uint64_t *blk_id)
 {
    const vmfs_fs_t *fs = inode->fs;
    u_int blk_index;
    int res;
 
    if (!vmfs_fs_readwrite(fs))
-      return(-EROFS);
+      return (-EROFS);
 
    *blk_id = 0;
 
-   if ((res = vmfs_inode_aggregate(inode,pos)) < 0)
-      return(res);
+   if ((res = vmfs_inode_aggregate(inode, pos)) < 0)
+      return (res);
 
-   if (inode->zla == VMFS_BLK_TYPE_PB) {
-      DECL_ALIGNED_BUFFER_WOL(buf,fs->pbc->bmh.data_size);
+   if (inode->zla == VMFS_BLK_TYPE_PB)
+   {
+      DECL_ALIGNED_BUFFER_WOL(buf, fs->pbc->bmh.data_size);
       uint64_t pb_blk_id;
       uint32_t blk_per_pb;
       u_int pb_index;
       u_int sub_index;
       bool update_pb;
-      
+
       update_pb = 0;
 
       blk_per_pb = fs->pbc->bmh.data_size / sizeof(uint32_t);
       blk_index = pos / inode->blk_size;
 
-      pb_index  = blk_index / blk_per_pb;
+      pb_index = blk_index / blk_per_pb;
       sub_index = blk_index % blk_per_pb;
 
       if (pb_index >= VMFS_INODE_BLK_COUNT)
-         return(-EINVAL);
+         return (-EINVAL);
 
       pb_blk_id = inode->blocks[pb_index];
 
       /* Allocate a Pointer Block if none is currently present */
-      if (!pb_blk_id) {
-         if ((res = vmfs_block_alloc(fs,VMFS_BLK_TYPE_PB,&pb_blk_id)) < 0)
-            return(res);
+      if (!pb_blk_id)
+      {
+         if ((res = vmfs_block_alloc(fs, VMFS_BLK_TYPE_PB, &pb_blk_id)) < 0)
+            return (res);
 
-         memset(buf,0,fs->pbc->bmh.data_size);
+         memset(buf, 0, fs->pbc->bmh.data_size);
          inode->blocks[pb_index] = pb_blk_id;
          inode->update_flags |= VMFS_INODE_SYNC_BLK;
          update_pb = 1;
-      } else {
+      }
+      else
+      {
          if (!vmfs_bitmap_get_item(fs->pbc,
                                    VMFS_BLK_PB_ENTRY(pb_blk_id),
                                    VMFS_BLK_PB_ITEM(pb_blk_id),
                                    buf))
-            return(-EIO);
+            return (-EIO);
 
-         *blk_id = read_le64(buf,sub_index*sizeof(uint64_t));
+         *blk_id = read_le64(buf, sub_index * sizeof(uint64_t));
       }
 
-      if (!*blk_id) {
-         if ((res = vmfs_block_alloc(fs,VMFS_BLK_TYPE_FB,blk_id)) < 0)
-            return(res);
+      if (!*blk_id)
+      {
+         if ((res = vmfs_block_alloc(fs, VMFS_BLK_TYPE_FB, blk_id)) < 0)
+            return (res);
 
-         write_le64(buf,sub_index*sizeof(uint64_t),*blk_id);
+         write_le64(buf, sub_index * sizeof(uint64_t), *blk_id);
          inode->blk_count++;
          inode->update_flags |= VMFS_INODE_SYNC_BLK;
          update_pb = 1;
-      } else {
-         if (VMFS_BLK_FB_TBZ(*blk_id)) {
-            if ((res = vmfs_block_zeroize_fb(fs,*blk_id)) < 0)
-               return(res);
+      }
+      else
+      {
+         if (VMFS_BLK_FB_TBZ(*blk_id))
+         {
+            if ((res = vmfs_block_zeroize_fb(fs, *blk_id)) < 0)
+               return (res);
 
             *blk_id = VMFS_BLK_FB_TBZ_CLEAR(*blk_id);
-            write_le64(buf,sub_index*sizeof(uint64_t),*blk_id);
+            write_le64(buf, sub_index * sizeof(uint64_t), *blk_id);
             inode->tbz--;
             inode->update_flags |= VMFS_INODE_SYNC_BLK;
             update_pb = 1;
@@ -710,27 +738,33 @@ int vmfs_inode_get_wrblock(vmfs_inode_t *inode,off_t pos,uint64_t *blk_id)
                                              VMFS_BLK_PB_ENTRY(pb_blk_id),
                                              VMFS_BLK_PB_ITEM(pb_blk_id),
                                              buf))
-         return(-EIO);
-   } else {
+         return (-EIO);
+   }
+   else
+   {
       /* File Block or Sub-Block */
       blk_index = pos / inode->blk_size;
-         
+
       if (blk_index >= VMFS_INODE_BLK_COUNT)
-         return(-EINVAL);
+         return (-EINVAL);
 
       *blk_id = inode->blocks[blk_index];
 
-      if (!*blk_id) {
-         if ((res = vmfs_block_alloc(fs,inode->zla,blk_id)) < 0)
-            return(res);
+      if (!*blk_id)
+      {
+         if ((res = vmfs_block_alloc(fs, inode->zla, blk_id)) < 0)
+            return (res);
 
          inode->blocks[blk_index] = *blk_id;
          inode->blk_count++;
          inode->update_flags |= VMFS_INODE_SYNC_BLK;
-      } else {
-         if ((inode->zla == VMFS_BLK_TYPE_FB) && VMFS_BLK_FB_TBZ(*blk_id)) {
-            if ((res = vmfs_block_zeroize_fb(fs,*blk_id)) < 0)
-               return(res);
+      }
+      else
+      {
+         if ((inode->zla == VMFS_BLK_TYPE_FB) && VMFS_BLK_FB_TBZ(*blk_id))
+         {
+            if ((res = vmfs_block_zeroize_fb(fs, *blk_id)) < 0)
+               return (res);
 
             *blk_id = VMFS_BLK_FB_TBZ_CLEAR(*blk_id);
             inode->blocks[blk_index] = *blk_id;
@@ -740,106 +774,112 @@ int vmfs_inode_get_wrblock(vmfs_inode_t *inode,off_t pos,uint64_t *blk_id)
       }
    }
 
-   return(0);
+   return (0);
 }
 
 /* Truncate file */
-int vmfs_inode_truncate(vmfs_inode_t *inode,off_t new_len)
+int vmfs_inode_truncate(vmfs_inode_t *inode, off_t new_len)
 {
    const vmfs_fs_t *fs = inode->fs;
    u_int i;
    int res;
 
    if (!vmfs_fs_readwrite(fs))
-      return(-EROFS);
+      return (-EROFS);
 
    if (new_len == inode->size)
-      return(0);
+      return (0);
 
-   if (new_len > inode->size) {
-      if ((res = vmfs_inode_aggregate(inode,new_len)) < 0)
-         return(res);
+   if (new_len > inode->size)
+   {
+      if ((res = vmfs_inode_aggregate(inode, new_len)) < 0)
+         return (res);
 
       inode->size = new_len;
       inode->update_flags |= VMFS_INODE_SYNC_META;
-      return(0);
+      return (0);
    }
 
-   switch(inode->zla) {
-      case VMFS_BLK_TYPE_FB:
-      case VMFS_BLK_TYPE_SB:
+   switch (inode->zla)
+   {
+   case VMFS_BLK_TYPE_FB:
+   case VMFS_BLK_TYPE_SB:
+   {
+      u_int start, end;
+
+      start = ALIGN_NUM(new_len, inode->blk_size) / inode->blk_size;
+      end = inode->size / inode->blk_size;
+
+      for (i = start; i <= end; i++)
       {
-         u_int start,end;
+         if (inode->blocks[i] != 0)
+         {
+            vmfs_block_free(fs, inode->blocks[i]);
+            inode->blk_count--;
+            inode->blocks[i] = 0;
+         }
+      }
+      break;
+   }
 
-         start = ALIGN_NUM(new_len,inode->blk_size) / inode->blk_size;
-         end   = inode->size / inode->blk_size;
+   case VMFS_BLK_TYPE_PB:
+   {
+      uint32_t blk_per_pb;
+      u_int pb_start, pb_end;
+      u_int sub_start, start;
+      u_int blk_index;
+      int count;
 
-         for(i=start;i<=end;i++) {
-            if (inode->blocks[i] != 0) {
-               vmfs_block_free(fs,inode->blocks[i]);
-               inode->blk_count--;
+      blk_per_pb = fs->pbc->bmh.data_size / sizeof(uint32_t);
+      blk_index = ALIGN_NUM(new_len, inode->blk_size) / inode->blk_size;
+
+      pb_start = blk_index / blk_per_pb;
+      sub_start = blk_index % blk_per_pb;
+
+      pb_end = inode->size / (inode->blk_size * blk_per_pb);
+
+      for (i = pb_start; i <= pb_end; i++)
+      {
+         if (inode->blocks[i] != 0)
+         {
+            start = (i == pb_start) ? sub_start : 0;
+
+            /* Free blocks contained in PB */
+            count = vmfs_block_free_pb(fs, inode->blocks[i],
+                                       start, blk_per_pb);
+
+            if (count > 0)
+               inode->blk_count -= count;
+
+            if (start == 0)
                inode->blocks[i] = 0;
-            }
          }
-         break;
       }
 
-      case VMFS_BLK_TYPE_PB:
-      {
-         uint32_t blk_per_pb;
-         u_int pb_start,pb_end;
-         u_int sub_start,start;
-         u_int blk_index;
-         int count;
+      break;
+   }
 
-         blk_per_pb = fs->pbc->bmh.data_size / sizeof(uint32_t);
-         blk_index = ALIGN_NUM(new_len,inode->blk_size) / inode->blk_size;
-
-         pb_start  = blk_index / blk_per_pb;
-         sub_start = blk_index % blk_per_pb;
-
-         pb_end = inode->size / (inode->blk_size * blk_per_pb);
-
-         for(i=pb_start;i<=pb_end;i++) {
-            if (inode->blocks[i] != 0) {
-               start = (i == pb_start) ? sub_start : 0;
-
-               /* Free blocks contained in PB */
-               count = vmfs_block_free_pb(fs,inode->blocks[i],
-                                          start,blk_per_pb);
-
-               if (count > 0)
-                  inode->blk_count -= count;
-
-               if (start == 0)
-                  inode->blocks[i] = 0;
-            }
-         }
-
-         break;
-      }
-
-      default:
-         return(-EIO);
+   default:
+      return (-EIO);
    }
 
    inode->size = new_len;
    inode->update_flags |= VMFS_INODE_SYNC_BLK;
-   return(0);
+   return (0);
 }
 
 /* Call a function for each allocated block of an inode */
 int vmfs_inode_foreach_block(const vmfs_inode_t *inode,
                              vmfs_inode_foreach_block_cbk_t cbk,
                              void *opt_arg)
-{  
+{
    const vmfs_fs_t *fs = inode->fs;
    uint64_t blk_size;
    uint32_t blk_per_pb;
    uint64_t blk_id;
    u_int blk_total;
    u_int blk_count;
-   int i,j;
+   int i, j;
 
    blk_total = 0;
    blk_per_pb = 0;
@@ -847,31 +887,33 @@ int vmfs_inode_foreach_block(const vmfs_inode_t *inode,
    blk_size = inode->blk_size;
 
    if (!blk_size)
-      return(-1);
+      return (-1);
 
    blk_count = (inode->size + blk_size - 1) / blk_size;
 
-   if (inode->zla == VMFS_BLK_TYPE_PB) {
+   if (inode->zla == VMFS_BLK_TYPE_PB)
+   {
       blk_per_pb = fs->pbc->bmh.data_size / sizeof(uint32_t);
       blk_total = blk_count;
       blk_count = (blk_count + blk_per_pb - 1) / blk_per_pb;
    }
 
    if (blk_count > VMFS_INODE_BLK_COUNT)
-      return(-1);
+      return (-1);
 
-   for(i=0;i<blk_count;i++) {
+   for (i = 0; i < blk_count; i++)
+   {
       blk_id = inode->blocks[i];
 
       if (!blk_id)
          continue;
 
-      cbk(inode,0,blk_id,opt_arg);
+      cbk(inode, 0, blk_id, opt_arg);
 
       /* Analyze pointer block */
-      if (inode->zla == VMFS_BLK_TYPE_PB) 
+      if (inode->zla == VMFS_BLK_TYPE_PB)
       {
-         DECL_ALIGNED_BUFFER_WOL(buf,fs->pbc->bmh.data_size);
+         DECL_ALIGNED_BUFFER_WOL(buf, fs->pbc->bmh.data_size);
          uint32_t blk_id2;
          u_int blk_rem;
 
@@ -879,60 +921,61 @@ int vmfs_inode_foreach_block(const vmfs_inode_t *inode,
                                    VMFS_BLK_PB_ENTRY(blk_id),
                                    VMFS_BLK_PB_ITEM(blk_id),
                                    buf))
-            return(-1);
+            return (-1);
 
          /* Compute remaining blocks */
-         blk_rem = m_min(blk_total - (i * blk_per_pb),blk_per_pb);
+         blk_rem = m_min(blk_total - (i * blk_per_pb), blk_per_pb);
 
-         for(j=0;j<blk_rem;j++) {
-            blk_id2 = read_le32(buf,j*sizeof(uint32_t));
+         for (j = 0; j < blk_rem; j++)
+         {
+            blk_id2 = read_le32(buf, j * sizeof(uint32_t));
 
             if (!blk_id2)
                continue;
 
-            cbk(inode,blk_id,blk_id2,opt_arg);
+            cbk(inode, blk_id, blk_id2, opt_arg);
          }
       }
    }
 
-   return(0);
+   return (0);
 }
 
 /* Get inode status */
-int vmfs_inode_stat(const vmfs_inode_t *inode,struct stat *buf)
+int vmfs_inode_stat(const vmfs_inode_t *inode, struct stat *buf)
 {
-   memset(buf,0,sizeof(*buf));
-   buf->st_mode  = inode->cmode;
+   memset(buf, 0, sizeof(*buf));
+   buf->st_mode = inode->cmode;
    buf->st_nlink = inode->nlink;
-   buf->st_uid   = inode->uid;
-   buf->st_gid   = inode->gid;
-   buf->st_size  = inode->size;
+   buf->st_uid = inode->uid;
+   buf->st_gid = inode->gid;
+   buf->st_size = inode->size;
    buf->st_atime = inode->atime;
    buf->st_mtime = inode->mtime;
    buf->st_ctime = inode->ctime;
    buf->st_blksize = M_BLK_SIZE;
-   buf->st_blocks  = inode->blk_count * (inode->blk_size / S_BLKSIZE);
-   return(0);
+   buf->st_blocks = inode->blk_count * (inode->blk_size / S_BLKSIZE);
+   return (0);
 }
 
 /* Get inode status */
-int vmfs_inode_stat_from_blkid(const vmfs_fs_t *fs,uint64_t blk_id,
+int vmfs_inode_stat_from_blkid(const vmfs_fs_t *fs, uint64_t blk_id,
                                struct stat *buf)
 {
    vmfs_inode_t *inode;
 
-   if (!(inode = vmfs_inode_acquire(fs,blk_id)))
-      return(-EIO);
+   if (!(inode = vmfs_inode_acquire(fs, blk_id)))
+      return (-EIO);
 
-   vmfs_inode_stat(inode,buf);
+   vmfs_inode_stat(inode, buf);
    vmfs_inode_release(inode);
-   return(0);
+   return (0);
 }
 
 /* Change permissions */
-int vmfs_inode_chmod(vmfs_inode_t *inode,mode_t mode)
+int vmfs_inode_chmod(vmfs_inode_t *inode, mode_t mode)
 {
    inode->mode = mode;
    inode->update_flags |= VMFS_INODE_SYNC_META;
-   return(0);
+   return (0);
 }
